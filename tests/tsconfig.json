@@ -1,0 +1,14 @@
+{
+    "compileOnSave": true,
+    "parserOptions": {
+        "sourceType": "module",
+    },
+    "compilerOptions": {
+        "target": "es5",
+        "module": "commonjs",
+        "sourceMap": true,
+    },
+    "include": [
+        "*"
+    ],
+}

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="lightgl.js"></script>
+  <script src="../csg.js"></script>
+  <script src="gourd.js"></script>
+  <script src="viewer.js"></script>
+
+  <style>
+    body {
+      font: 14px/20px 'Helvetica Neue Light', HelveticaNeue-Light, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 50px 50px 200px 50px;
+    }
+
+    pre,
+    code {
+      font: 12px/20px Monaco, monospace;
+      border: 1px solid #CCC;
+      border-radius: 3px;
+      background: #F9F9F9;
+      padding: 0 3px;
+      color: #555;
+    }
+
+    pre {
+      padding: 10px;
+    }
+
+    h1,
+    h2 {
+      font: bold 50px/50px 'Helvetica Neue', Helvetica, Arial;
+    }
+
+    h2 {
+      font-size: 30px;
+      margin: 100px 0 0 0;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .viewer {
+      width: 500px;
+      height: 500px;
+      background: #EEE;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 0 auto;
+    }
+
+    td {
+      padding: 5px;
+      text-align: center;
+    }
+
+    td code {
+      background: none;
+      border: none;
+      color: inherit;
+    }
+
+    canvas {
+      cursor: move;
+    }
+  </style>
+</head>
+
+<body>
+  <table>
+    <tr>
+      <td>
+        <div id="0" class="viewer"></div><code>1</code></td>
+      <div id="1" class="viewer"></div><code>2</code></td>
+      <div id="2" class="viewer"></div><code>3</code></td>
+      <div id="3" class="viewer"></div><code>4</code></td>
+      <div id="4" class="viewer"></div><code>5</code></td>
+      <div id="5" class="viewer"></div><code>6</code></td>
+      <div id="6" class="viewer"></div><code>7</code></td>
+
+    </tr>
+  </table>
+
+  <script>
+    class BoxGen {
+      constructor(data) {
+        this.data = data;
+      }
+      lid() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var outer = CSG.cube({ radius: [i.width + t.wall, i.depth + t.wall, t.lid] });
+        var inner = CSG.cube({ center: [0, 0, t.lid.outer], radius: [i.width, i.depth, t.lid.inner] });
+        var inners = CSG.cube({ center: [0, 0, t.lid.outer], radius: [i.width - t.lid.wall, i.depth - t.lid.wall, t.lid.inner + hint] });
+        var lid = inner.subtract(inners).union(outer)
+      }
+
+      body() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var inner = CSG.cube({ center: [0, 0, t.base + hint], radius: [i.width, i.depth, i.height] });
+        var outer = CSG.cube({ radius: [i.width + t.wall, i.depth + t.wall, i.height + t.base] });
+        var shell = outer.subtract(inner);
+        return shell;
+      }
+    }
+
+    class BoxGen2 {
+      constructor(data) {
+        this.data = data;
+      }
+
+      roundcorner(csg, center, r, d) {
+        var corner = CSG.cube({ center: center, radius: [r, r, d] })
+        csg = csg.subtract(corner);
+        var tube = CSG.cylinder({
+          start: [],
+          end: [],
+          radius: r,
+          slices: 16
+        });
+      }
+      box_contour(width, height, radius) {
+        var hc = height - 2 * radius;
+        var wc = width - 2 * radius;
+        var pl = new Line(width / 2, 0).line(0, hc / 2).arc({ rx: radius }).line(-wc, 0).arc({ rx: radius, start: Math.PI / 2 }).line(0, -hc).arc({ rx: radius, start: Math.PI }).line(wc, 0).arc({ rx: radius, start: Math.PI * 1.5 })
+        return pl.lineTo(width / 2, 0).toPolygon();
+      }
+      box_contour2(width, height, radius) {
+        var hc = height - 2 * radius;
+        var wc = width - 2 * radius;
+        var pl = new Line(width / 2, 0).line(0, hc / 2).arc({ rx: radius, start: 1.5 * Math.PI, arc: -Math.PI / 2 }).line(-wc, 0).arc({ rx: radius, arc: -Math.PI / 2 }).line(0, -hc).arc({ rx: radius, start: Math.PI / 2, arc: -Math.PI / 2 }).line(wc, 0).arc({ rx: radius, start: Math.PI, arc: -Math.PI / 2 })
+        return pl.lineTo(width / 2, 0).toPolygon();
+      }
+      box_contour3(width, height, radius) {
+        var hc = height - 2 * radius;
+        var wc = width - 2 * radius;
+        var pl = new Line(width / 2, 0).line(0, hc / 2).line(-radius, radius).line(-wc, 0).line(-radius, -radius).line(0, -hc).line(radius, -radius).line(wc, 0).line(radius, radius)
+        return pl.lineTo(width / 2, 0).toPolygon();
+      }
+      tab(radius) {
+        radius = 1
+        var t = 0.2
+        var pl = new Line(0, 0).line(radius / 2, 0).line(t, t).line(-radius - t, 0).line(t, -t).close();
+        var b = extrude({ polygon: pl.toPolygon(), d: [0, 0, 1] })
+        var pl2 = pl.clone().shrink(0.2, 0);
+        var t = extrude({ polygon: pl.toPolygon({ z: 1 }), polygon2: pl2.toPolygon({ z: 1 }), d: [0, 0, 0.2] })
+        return t.union(b);
+      }
+
+      body2() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var cr = this.data.corner.radius;
+
+        var outer = extrude({ polygon: this.box_contour(i.width, i.depth, cr), d: new CSG.Vector(0, 0, i.height) });
+        var inner = extrude({ polygon: this.box_contour2(i.width - t.wall * 2, i.depth - t.wall * 2, cr - t.wall), d: new CSG.Vector(0, 0, i.height - t.base) });
+
+        translate(inner, new CSG.Vector(0, 0, t.base))
+
+        return outer.subtract(inner);
+        //return inner;
+      }
+
+      body3() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var cr = this.data.corner.radius;
+
+        var outer = extrude({ polygon: this.box_contour(i.width, i.depth, cr), d: new CSG.Vector(0, 0, i.height) });
+        var inner = extrude({ polygon: this.box_contour3(i.width - t.wall * 2, i.depth - t.wall * 2, cr - t.wall), d: new CSG.Vector(0, 0, i.height - t.base) });
+
+        translate(inner, new CSG.Vector(0, 0, t.base))
+        var shell = outer.subtract(inner);
+
+        // cut out lid slot
+        var lid_outer = extrude({ polygon: this.box_contour(i.width - t.wall, i.depth - t.wall, cr), d: [0, 0, t.lid.outer] });
+        translate(lid_outer, [0, 0, i.height - t.lid.outer / 2])
+        shell = shell.subtract(lid_outer);
+
+        // add lid catch
+        var lc = this.data.catch
+        var cat = new Line(0, 0).line(0, lc.height).line(-lc.depth, 0).line(0, -lc.height).close().translate(i.width / 2, i.height - 0.5).toPolygon({ y: -lc.width / 2 })
+        lc = extrude({ polygon: cat, d: [0, lc.width, 0] })
+
+        // add lid hook
+        var hook = new Line(0, 0).line(0, 1).line(-lc.depth, 0).line(0, -lc.height).close().translate(i.width / 2, i.height - 0.5).toPolygon({ y: -lc.width / 2 })
+        lc = extrude({ polygon: cat, d: [0, lc.width, 0] })
+
+        return shell.union(lc);
+      }
+
+      lid() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var cr = this.data.corner.radius;
+
+        var outer = extrude({ polygon: this.box_contour(i.width - t.wall, i.depth - t.wall, cr), d: new CSG.Vector(0, 0, t.lid.outer) });
+        var c = this.tab(0.5);
+
+        //return rotate(c,90,new CSG.Vector(0,0,1));
+      }
+
+      lid_nub() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var cr = this.data.corner.radius;
+        var bevel=0.1
+        var nub = new Line(1, 0).line(0, 3).arc({ rx: 2, arc: Math.PI, slices: 7 }).line(0, -3).close();
+        var nubb = nub.shrink(bevel);
+        nubb.get(0)[1] = nub.get(0)[1]
+        nubb.get(-1)[1] = nub.get(-1)[1]
+        nubb.get(-2)[1] = nub.get(-2)[1]
+
+        var cnub = prism([nub.toPolygon(), nub.toPolygon({ z: 1 }), nubb.toPolygon({ z: 1+Math.sqrt(bevel) })]);
+        return cnub;
+        //  var c= this.tab(0.5);
+
+        //return rotate(c,90,new CSG.Vector(0,0,1));
+      }
+
+
+
+      body() {
+        var i = this.data.internal
+        var t = this.data.thickness
+        var inner = CSG.cube({ center: [0, 0, t.base], radius: [i.width, i.depth, i.height] });
+        var outer = CSG.cube({ radius: [i.width + t.wall, i.depth + t.wall, i.height + t.base] });
+        var shell = outer.subtract(inner);
+        var r = this.data.corner.radius;
+        var corner = CSG.cube({ center: [i.width + t.wall - r / 2, i.depth + t.wall - r / 2, 0], radius: [r / 2, r / 2, i.height + t.base] })
+        shell = shell.subtract(corner);
+        corner = CSG.cube({ center: [i.width + t.wall - r * 1.5, i.depth + t.wall - r / 2, 0], radius: [r / 2, r / 2, i.height + t.base] })
+        shell = shell.union(corner);
+        corner = CSG.cube({ center: [i.width + t.wall - r / 2, i.depth + t.wall - r * 1.5, 0], radius: [r / 2, r / 2, i.height + t.base] })
+        shell = shell.union(corner);
+        var tube = CSG.cylinder({
+          start: [i.width + t.wall - r, i.depth + t.wall - r, -i.height - t.base],
+          end: [i.width + t.wall - r, i.depth + t.wall - r, i.height + t.base],
+          radius: r,
+          slices: 16
+        });
+
+        return shell.union(tube);
+      }
+
+      hexhole({ depth, outer, hole, hex: { r: hex_r, depth: hex_depth } }) {
+        var an = annulus({ height: depth, outer, inner: hole })
+        var h = extrude({ polygon: hexagon({ r: hex_r, z: depth / 2 }), d: new CSG.Vector([0, 0, -hex_depth]) });
+        return an.subtract(h);
+      }
+
+    }
+
+    bd = {
+
+      internal: {
+        width: 10,
+        height: 5,
+        depth: 6
+      },
+      thickness: { base: 0.1, wall: 0.1, lid: { outer: 0.2, inner: 0.2 } },
+      corner: { radius: 1 },
+      clearance: { lid: 0.05 },
+      catch: { width: 1, height: 0.5, depth: 0.5 }
+    }
+
+    function test() {
+      // var testl = new Line(2, 0).arc({ rx: 2, arc: Math.PI * 2 ,slices:6}).toPolygon()
+      // var testl2 = new Line(2, 0).arc({ rx: 2, arc: Math.PI * 2,slices:6 }).shrink(0.5).toPolygon()
+      // return extrude({ polygon: testl, polygon2: testl2, d: [0, 0, 1] });
+      return new BoxGen2(bd).lid_nub();
+    }
+    // Test case from issue 1
+    var iw = 5, ih = 4, id = 3;
+    var tb = 0.2, tw = 0.2
+    var a = CSG.cube({ radius: [iw, id, tb] });
+    var b = CSG.cube({ center: [0, 0, tb * 2], radius: [iw - 2 * tw, id - 2 * tw, tb] });
+
+    var c = CSG.cube({ radius: [iw, id, ih] });
+    var d = CSG.cube({ radius: [iw - tw, id - tw, ih - tw] });
+
+    var e = c.subtract(d);
+
+    var f = CSG.cube({ center: [0, 0, ih], radius: [iw, id, ih] });
+    var g = e.subtract(f);
+
+    var ic = CSG.cylinder({
+      start: [0, 0, 0],
+      end: [0, 0, 1],
+      radius: 2,
+      slices: 32
+    });
+    //var h = extrude({ polygon: hexagon({ r: 1, z: 1 }), d: new CSG.Vector([0, 0, -1]) })
+
+    //var b = [...Array(5).keys()].forEach((v,i)=>a=a.subtract(CSG.cube({center:[i*0.5,0,0],radius:[0.1,2,2]})));
+    //console.log(b);
+    //var b = CSG.sphere({ radius: 0.4, stacks: 12 });
+    //var c = CSG.cylinder({ radius: 0.9, start: [-1, 0, 0], end: [1, 0, 0] });
+    //var d = CSG.cylinder({ radius: 0.3, start: [0, -1, 0], end: [0, 1, 0] });
+    //var e = CSG.cylinder({ radius: 0.3, start: [0, 0, -1], end: [0, 0, 1] });
+    var issue1 = a;
+
+    // Create viewers
+    var meshes = [
+      // a.union(b)
+      g
+    ];
+    Viewer.lineOverlay = true;
+    //for (var i = 0; i < operations.length; i++) {
+    addViewer(new Viewer(test(), 500, 500, 15));
+    addViewer(new Viewer(annulus({ height: 1, outer: 1, inner: 0.5 }), 500, 500, 15));
+    addViewer(new Viewer(slot({ height: 1, length: 3, head: 0.5, shaft: 0.25 }), 500, 500, 15));
+    //addViewer(new Viewer(extrude({ polygon: hexagon({ r: 1, z: 2 }), d: new CSG.Vector([0, 0, -2]) }), 500, 500, 15));
+    //addViewer(new Viewer(ic.subtract(h), 500, 500, 15));
+    addViewer(new Viewer(new BoxGen2(bd).body(), 500, 500, 15));
+    // addViewer(new Viewer(new BoxGen2(bd).hexhole({depth:3,outer:1,hole:0.5,hex:{r:0.75,depth:0.5}}), 500, 500, 15));
+    // var pl = new Line().line(2, 0).line(0, 1).arc({rx:0.3}).line(-2 * 1.7, 0).arc({rx:0.3,start:Math.PI/2}).line(0, -1).line(0, -1).arc({rx:0.3,start:Math.PI}).line(2 * 1.7, 0).arc({rx:0.3,start:Math.PI*1.5}).lineTo(2, 0).close().toPolygon();
+    pl = new Line(1, 0).arc({ rx: 1, arc: 2 * Math.PI, slices: 6 }).toPolygon()
+    var c = extrude({ polygon: pl, d: new CSG.Vector(0, 0, 3) });
+    var bd3 = new BoxGen2(bd).body3();
+    // download(bd3.toStl(),"box.stl")
+    addViewer(new Viewer(bd3, 500, 500, 30));
+
+
+	//}
+
+  </script>
+</body>
+
+</html>

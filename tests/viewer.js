@@ -1,16 +1,18 @@
+var GL = require('./lightgl.js')
+
 // Set the color of all polygons in this solid
-CSG.prototype.setColor = function(r, g, b) {
-  this.toPolygons().map(function(polygon) {
+CSG.prototype.setColor = function (r, g, b) {
+  this.toPolygons().map(function (polygon) {
     polygon.shared = [r, g, b];
   });
 };
 
 // Convert from CSG solid to GL.Mesh object
-CSG.prototype.toMesh = function() {
+CSG.prototype.toMesh = function () {
   var mesh = new GL.Mesh({ normals: true, colors: true });
   var indexer = new GL.Indexer();
-  this.toPolygons().map(function(polygon) {
-    var indices = polygon.vertices.map(function(vertex) {
+  this.toPolygons().map(function (polygon) {
+    var indices = polygon.vertices.map(function (vertex) {
       vertex.color = polygon.shared || [1, 1, 1];
       return indexer.add(vertex);
     });
@@ -18,15 +20,13 @@ CSG.prototype.toMesh = function() {
       mesh.triangles.push([indices[0], indices[i - 1], indices[i]]);
     }
   });
-  mesh.vertices = indexer.unique.map(function(v) { return [v.pos.x, v.pos.y, v.pos.z]; });
-  mesh.normals = indexer.unique.map(function(v) { return [v.normal.x, v.normal.y, v.normal.z]; });
-  mesh.colors = indexer.unique.map(function(v) { return v.color; });
+  mesh.vertices = indexer.unique.map(function (v) { return [v.pos.x, v.pos.y, v.pos.z]; });
+  mesh.normals = indexer.unique.map(function (v) { return [v.normal.x, v.normal.y, v.normal.z]; });
+  mesh.colors = indexer.unique.map(function (v) { return v.color; });
   mesh.computeWireframe();
   return mesh;
 };
 
-var angleX = 20;
-var angleY = 20;
 var viewers = [];
 
 // Set to true so lines don't use the depth buffer
@@ -37,18 +37,23 @@ Viewer.lineOverlay = false;
 function Viewer(csg, width, height, depth) {
   viewers.push(this);
 
+  var angleX = 20;
+  var angleY = 20;
+
   // Get a new WebGL canvas
   var gl = GL.create();
   this.gl = gl;
-  this.mesh = csg.toMesh();
-
+  this.mesh = []
+  if (Array.isArray(csg))
+    csg.forEach(a => this.mesh.push(a.toMesh()));
+  else this.mesh.push(csg.toMesh())
   // Set up the viewport
   gl.canvas.width = width;
   gl.canvas.height = height;
   gl.viewport(0, 0, width, height);
   gl.matrixMode(gl.PROJECTION);
   gl.loadIdentity();
-  gl.perspective(45, width / height, 0.1, 100);
+  gl.perspective(45, width / height, 1, 5000);
   gl.matrixMode(gl.MODELVIEW);
 
   // Set up WebGL state
@@ -93,20 +98,24 @@ function Viewer(csg, width, height, depth) {
     }\
   ');
 
-  gl.onmousemove = function(e) {
+  gl.onmousemove = function (e) {
     if (e.dragging) {
-      angleY += e.deltaX * 2;
-      angleX += e.deltaY * 2;
-      angleX = Math.max(-90, Math.min(90, angleX));
+      if (e.buttons == 1) {
+        angleY += e.deltaX * 2;
+        angleX += e.deltaY * 2;
+        angleX = Math.max(-90, Math.min(90, angleX));
+        that.gl.ondraw();
+      }
+      else if (e.buttons==2) {
+        depth -= e.deltaY;
+        that.gl.ondraw();
 
-      viewers.map(function(viewer) {
-        viewer.gl.ondraw();
-      });
+      }
     }
   };
 
   var that = this;
-  gl.ondraw = function() {
+  gl.ondraw = function () {
     gl.makeCurrent();
 
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -116,12 +125,13 @@ function Viewer(csg, width, height, depth) {
     gl.rotate(angleY, 0, 1, 0);
 
     if (!Viewer.lineOverlay) gl.enable(gl.POLYGON_OFFSET_FILL);
-    that.lightingShader.draw(that.mesh, gl.TRIANGLES);
+
+    that.mesh.forEach(m => that.lightingShader.draw(m, gl.TRIANGLES));
     if (!Viewer.lineOverlay) gl.disable(gl.POLYGON_OFFSET_FILL);
 
     if (Viewer.lineOverlay) gl.disable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
-    that.blackShader.draw(that.mesh, gl.LINES);
+    that.mesh.forEach(m => that.blackShader.draw(m, gl.LINES));
     gl.disable(gl.BLEND);
     if (Viewer.lineOverlay) gl.enable(gl.DEPTH_TEST);
   };
@@ -130,6 +140,7 @@ function Viewer(csg, width, height, depth) {
 }
 
 var nextID = 0;
-function addViewer(viewer) {
+Viewer.addViewer=function(viewer) {
   document.getElementById(nextID++).appendChild(viewer.gl.canvas);
 }
+module.exports = Viewer

@@ -621,3 +621,5 @@ CSG.Node.prototype = {
     }
   }
 };
+
+module.exports = CSG
